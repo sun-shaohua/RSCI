@@ -1,0 +1,28 @@
+目录结构
+
+1.源码中主要包括如下部分
+
+fixtures：为代码贡献者提供的测试React
+packages：主要部分，包含Scheduler，reconciler等
+scripts：react构建相关，打包、编译、本地开发相关的命令
+
+2.下面来看下packages主要包含的模块
+ react：核心Api如：React.createElement、React.Component,hooks都在这
+ 和平台相关render相关的文件夹：
+    react-art：如canvas svg的渲染
+    react-dom：浏览器环境
+    react-native-renderer：原生相关
+    react-noop-renderer：调试或者fiber用
+ 试验性的包
+ react-server: ssr相关
+ react-fetch: 请求相关
+ react-interactions: 和事件如点击事件相关
+ react-reconciler: 构建节点
+ shared：包含公共方法和变量
+ 辅助包：
+ react-is : 判断类型
+ react-client: 流相关
+ react-fetch: 数据请求相关
+ react-refresh: 热加载相关
+ scheduler：调度器相关
+ React-reconciler：在render阶段用它来构建fiber节点
