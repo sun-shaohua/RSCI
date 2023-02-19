@@ -33,3 +33,82 @@ React理念
 
   #2.IO瓶颈
   React实现了Suspense
+
+  ###React15的架构
+  react15的架构分为两层，1是reconciler（协调器）负责找出变化的组件或者元素 2是renderer（渲染器）负责将变化的元素渲染在界面
+
+  ####Reconciler（协调器）
+  我们知道在React中有this.setState，ReactDom.render等触发渲染的API。
+  每当更新的时候Reconciler要做的工作：
+  -通过调用函数组件，或者class的render方法，将返回的jsx元素转化为虚拟DOM
+  -将虚拟DOM和上一次的虚拟DOM进行对比
+  -通过对比找出变化的虚拟DOM
+  -通知Render将变化的虚拟DOM渲染到真实的DOM节点上
+
+  ####Renderer（渲染器）
+  由于React是快平台的库，所以在不同的平台有不同的Render方法
+
+  React15的缺点
+  在Reconciler中，在mount的时候调用mountComponent，在update的时候调用updateComponent，这两个方法都会通过递归的形式更新组件。
+  递归更新的缺点
+  由于递归执行，所以更新一旦开始，中途就无法中断。当层级很深时，递归更新时间超过了16ms，用户交互就会卡顿。
+
+  ###React16的架构
+  React16的架构分为三层，shoulder（调度器），reconciler（协调器），renderer（渲染器）
+  #### Scheduler(调度器)
+  我们通过浏览器是否有时间来判断是否进行任务中断，其中浏览器中实现了一个API，requestIdCallback，但是由于一下原因，浏览器放弃了
+  -浏览器的兼容
+  -频繁触发具有不稳定的因素
+  基于以上原因，React实现了功能更完备的requestIdleCallbackpolyfill，这就是Scheduler。除了在空闲时触发回调的功能外，Scheduler还提供了多种调度优先级供任务设置。
+  #### Reconciler(协调器)
+  我们知道，在React15中Reconciler是递归处理虚拟DOM的。让我们看看React16的Reconciler (opens new window)。
+
+  我们可以看见，更新工作从递归变成了可以中断的循环过程。每次循环都会调用shouldYield判断当前是否有剩余时间。
+
+  /** @noinline */
+  function workLoopConcurrent() {
+    // Perform work until Scheduler asks us to yield
+    while (workInProgress !== null && !shouldYield()) {
+      workInProgress = performUnitOfWork(workInProgress);
+    }
+  }
+  那么React16是如何解决中断更新时DOM渲染不完全的问题呢？
+
+  在React16中，Reconciler与Renderer不再是交替工作。当Scheduler将任务交给Reconciler后，Reconciler会为变化的虚拟DOM打上代表增/删/更新的标记，类似这样：
+
+  export const Placement = /*             */ 0b0000000000010;
+  export const Update = /*                */ 0b0000000000100;
+  export const PlacementAndUpdate = /*    */ 0b0000000000110;
+  export const Deletion = /*              */ 0b0000000001000;
+  全部的标记见这里(opens new window)
+
+  整个Scheduler与Reconciler的工作都在内存中进行。只有当所有组件都完成Reconciler的工作，才会统一交给Renderer。
+
+  ####Renderer（渲染器）
+  Renderer根据Reconciler为虚拟DOM打的标记，同步执行对应的DOM操作。
+
+  所以，对于我们在上一节使用过的Demo
+
+  乘法小Demo
+  在React16架构中整个更新流程为：
+
+  更新流程
+  其中红框中的步骤随时可能由于以下原因被中断：
+
+  有其他更高优任务需要先更新
+  当前帧没有剩余时间
+  由于红框中的工作都在内存中进行，不会更新页面上的DOM，所以即使反复中断，用户也不会看见更新不完全的DOM（即上一节演示的情况）。
+
+  实际上，由于Scheduler和Reconciler都是平台无关的，所以React为他们单独发了一个包react-Reconciler (opens new window)。你可以用这个包自己实现一个ReactDOM，具体见参考资料
+
+  #总结
+  通过本节我们知道了React16采用新的Reconciler。
+
+  Reconciler内部采用了Fiber的架构。
+
+  Fiber是什么？他和Reconciler或者说和React之间是什么关系？我们会在接下来三节解答
+
+
+
+
+
