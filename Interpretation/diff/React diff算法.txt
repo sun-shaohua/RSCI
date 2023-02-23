@@ -1,0 +1,113 @@
+React diff算法
+
+1.什么是react的diff算法
+ 在调用React的render方法的时候，会创建一个React元素组成的树，当下次state｜props改变引起更新的时候，相同的render方法会渲染出不太相同的树。
+ React基于这两颗树之间的差别来判断如何高效的更新UI，以保证当前的UI与react树保持一致。
+ 在React16之后的版本将同步更新重构成了可中断的异步更新，即采用新的Reconciler（协调器，用于找到组件的变化）,采用了fiber架构。每一个react元
+ 素对应有相应的fiber节点，filer节点通过链表的形式相会连接，形成fiber树，更新界面的时候，采用了双缓存的形式，老的fiber树和react元素进行对比
+ 和复用。
+ 对于diff算法的本身，也会带来性能上面的消耗，React在两个假设的的基础上建立了一套O(n)的启发算法：
+
+ 两个假设：
+ 1.两个不同的元素会产生两个不同的树  2.开发者可以使用key属性标识那些元素在不同的渲染下有可能是不变的
+ 三个策略（按照层级分）： tree diff,component diff, element diff
+
+ tree diff
+ React通过updateDepth对Virtual DOM树进行层级控制。
+ 对树分层比较，两棵树只对同一层次节点进行比较。如果该节点不存在时，则该节点及其子节点会被完全删除，不会再进一步比较。
+
+ 如果出现跨层级的节点不一致，会怎么样？
+ 因为Tree diff是对树的每一层进行遍历，如果某组件不存在了，则会直接销毁。如图所示，左边是旧树，右边是新树。会直接删除A节点，然后再D节点下会创建新的A，B，C节点。是不会移动这个树的。
+
+ component diff
+ component diff 与 tree diff的策略是类似的。
+ 如果是同一类型的组件，按照原策略对VDOM Tree（层级比较）继续比较 ；
+ 如果不是同一类型的组件，则将该组件判断为 dirty component，从而替换整个组件下的所有子节点；
+ 对于同一类型的组件，有可能他的 VDOM 没有任何变化，如果能够确切的知道这点那可以节省大量的 diff 运算时间，因此 React 允许用户通过 shouldComponentUpdate() PureComponent 及 React.memo 来判断该组件是否需要进行 diff 。
+ 需要注意的是，即使component可能结构相同，但只要组件类型不同就会被整个替换。
+
+ element diff
+ 就是元素层级的比较，默认情况下，当递归 DOM 节点的子元素时，React 会同时遍历两个子元素的列表；当产生差异时，产生一个改变操作。
+ 在同级相同类型的子元素列表末尾新增元素时，更新开销比较小。比如：
+ <ul>
+   <li>first</li>
+   <li>second</li>
+ </ul>
+
+ <ul>
+   <li>first</li>
+   <li>second</li>
+   <li>third</li>
+ </ul>
+ 前两个元素相同，不需要改变，只在末尾插入一个元素。
+ 如果只是简单的将新增元素插入到表头，那么更新开销会比较大。比如：
+ 会全部删除重新创建。在这种情况下，不会进行元素移动，而是不断删除，重新创建，造成开销过大。
+
+ 优化方案keys
+ React 引入了 key 属性。当子元素拥有 key 时，React 使用 key 来匹配原有树上的子元素以及最新树上的子元素。以下示例在新增 key 之后，使得树的转换效率得以提高：
+ 只会在头部插入third元素，后两个元素会进行移动。
+
+ 基于React Diff的开发建议
+ 基于tree diff：
+ 开发组件时，注意保持DOM结构的稳定；即，尽可能少地动态操作DOM结构，尤其是跨层级的进行移动操作。
+ 这时可以通过 CSS 隐藏或显示节点，而不是真的移除或添加 DOM 节点。
+ 基于component diff：
+ 为避免父组件更新而导致的子组件不必要的更新，注意使用 shouldComponentUpdate() PureComponent 及 React.memo 来减少组件不必要的更新。
+ 对于类似的结构应该尽量封装成组件，既减少代码量，又能减少component diff的性能消耗。
+ 基于element diff：
+ 对于同层级的元素，当涉及排序变化时，增加唯一key且避免使用index作为key，通过标记 key 的方式，React 可以直接移动 DOM 节点，降低内耗。同时避免使用不稳定的key，key不稳定时，会导致组件实例被不必要的重新创建。
+
+Diff算法使用流程
+ 1.current fiber。如果该DOM节点已经在界面上，current fiber代表DOM节点对应的fiber节点。
+ 2. workInProgress fiber。 如果该DOM代表本次更新渲染到界面中，workInProgress Fiber代表该DOM节点对应的Fiber节点。
+ 3.DOM节点本身。
+ 4.JSX对象。即ClassComponent的render方法的返回结果，或FunctionComponent的调用结果。JSX对象中包含描述DOM节点的信息。
+
+ Diff算法的本质是对比1和4，生成2。
+
+Diff是如何实现的
+我们从Diff的入口函数【reconcileChildFibers】出发，该函数会根据newChild（即JSX对象）类型调用不同的处理函数。
+
+你可以从这里 (opens new window)看到reconcileChildFibers的源码。
+
+// 根据newChild类型选择不同diff函数处理
+function reconcileChildFibers(
+  returnFiber: Fiber,
+  currentFirstChild: Fiber | null,
+  newChild: any,
+): Fiber | null {
+
+  const isObject = typeof newChild === 'object' && newChild !== null;
+
+  if (isObject) {
+    // object类型，可能是 REACT_ELEMENT_TYPE 或 REACT_PORTAL_TYPE
+    switch (newChild.$$typeof) {
+      case REACT_ELEMENT_TYPE:
+        // 调用 reconcileSingleElement 处理
+      // // ...省略其他case
+    }
+  }
+
+  if (typeof newChild === 'string' || typeof newChild === 'number') {
+    // 调用 reconcileSingleTextNode 处理
+    // ...省略
+  }
+
+  if (isArray(newChild)) {
+    // 调用 reconcileChildrenArray 处理
+    // ...省略
+  }
+
+  // 一些其他情况调用处理函数
+  // ...省略
+
+  // 以上都没有命中，删除节点
+  return deleteRemainingChildren(returnFiber, currentFirstChild);
+}
+我们可以从同级的节点数量将Diff分为两类：
+
+当newChild类型为object、number、string，代表同级只有一个节点
+
+当newChild类型为Array，同级有多个节点
+
+在接下来两节我们会分别讨论这两类节点的Diff。
